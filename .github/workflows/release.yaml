@@ -5,64 +5,105 @@ on:
     inputs:
       branch:
         description: "Branch to build from"
-        required: false
+        required: true
         default: "release"
       tag:
-        description: "Tag name for the release (e.g. v1.0.0)"
-        required: false
+        description: "Tag name for the release (e.g., v1.0.0)"
+        required: true
         default: "v0.0.1"
 
 permissions:
   contents: write
   packages: write
-  id-token: write
+  id-token: write  
 
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Check out the specified branch
       - name: Check out code
         uses: actions/checkout@v3
         with:
-          # Use the branch name passed in as input
           ref: ${{ github.event.inputs.branch }}
 
+      # 2. Set up Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.11"
 
+      # 3. Install build dependencies
       - name: Install build dependencies
-        run: pip install build twine
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
 
+      # 4. Build the wheel
       - name: Build wheel
         run: |
-             python -m build --wheel --outdir dist
-             ls -lah dist  # Debug: confirm the wheel was created here
+          python -m build --wheel --outdir dist
+          ls -lah dist  # Debug: confirm the wheel was created here
 
-      #- name: Create or Update Release
-      #  id: create_release
-      #  uses: actions/create-release@v1
-      #  with:
-      #    tag_name: ${{ github.event.inputs.tag }}
-      #    release_name: ${{ github.event.inputs.tag }}
-      #    draft: false
-      #    prerelease: false
-      #  env:
-      #    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload
-        uses: softprops/action-gh-release@v1
+      # 5. Create GitHub Release via GitHub API
+      - name: Create Release
+        id: create_release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          files: ./*.whl
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          TAG_NAME="${{ github.event.inputs.tag }}"
+          RELEASE_NAME="${{ github.event.inputs.tag }}"
+          
+          # Check if the tag already exists
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Tag $TAG_NAME already exists."
+          else
+            # Create a new tag
+            git tag "$TAG_NAME"
+            git push origin "$TAG_NAME"
+          fi
 
+          # Create the release
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Content-Type: application/json" \
+            https://api.github.com/repos/${{ github.repository }}/releases \
+            -d @- <<EOF
+{
+  "tag_name": "$TAG_NAME",
+  "name": "$RELEASE_NAME",
+  "body": "Release $RELEASE_NAME",
+  "draft": false,
+  "prerelease": false
+}
+EOF
+          )
+
+          # Extract the upload URL
+          UPLOAD_URL=$(echo "$RESPONSE" | jq -r '.upload_url')
+          echo "UPLOAD_URL=$UPLOAD_URL" >> $GITHUB_OUTPUT
+
+      # 6. Upload the wheel to the release
       - name: Upload Wheel
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ github.workspace }}/dist/*.whl
-          asset_name: smolagents-${{ github.event.inputs.branch }}.whl
-          asset_content_type: application/octet-stream
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+          UPLOAD_URL: ${{ steps.create_release.outputs.UPLOAD_URL }}
+        run: |
+          WHEEL_PATH=$(ls dist/*.whl | head -n 1)
+          WHEEL_NAME=$(basename "$WHEEL_PATH")
+          
+          if [ -z "$WHEEL_PATH" ]; then
+            echo "No wheel file found in dist/ directory."
+            exit 1
+          fi
+
+          echo "Uploading $WHEEL_NAME to release..."
+
+          curl -s -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$WHEEL_PATH" \
+            "${UPLOAD_URL}?name=${WHEEL_NAME}"
+
+          echo "Wheel uploaded successfully."
