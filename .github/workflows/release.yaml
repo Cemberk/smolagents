@@ -85,25 +85,35 @@ jobs:
           echo "UPLOAD_URL=$UPLOAD_URL" >> $GITHUB_OUTPUT
 
       # 6. Upload the wheel to the release
-      - name: Upload Wheel
+      #- name: Upload Wheel
+      #  env:
+      #    GITHUB_TOKEN: ${{ secrets.CRED_TOKEN }}
+      #    UPLOAD_URL: ${{ steps.create_release.outputs.UPLOAD_URL }}
+      #  run: |
+      #    WHEEL_PATH=$(ls dist/*.whl | head -n 1)
+      #    WHEEL_NAME=$(basename "$WHEEL_PATH")
+      #    
+      #    if [ -z "$WHEEL_PATH" ]; then
+      #      echo "No wheel file found in dist/ directory."
+      #      exit 1
+      #    fi
+
+      #    echo "Uploading $WHEEL_NAME to release..."
+
+      #    curl -s -X POST \
+      #      -H "Authorization: token $GITHUB_TOKEN" \
+      #      -H "Content-Type: application/octet-stream" \
+      #      --data-binary @"$WHEEL_PATH" \
+      #      "${UPLOAD_URL}?name=${WHEEL_NAME}"
+
+      #    echo "Wheel uploaded successfully."
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.CRED_TOKEN }}
-          UPLOAD_URL: ${{ steps.create_release.outputs.UPLOAD_URL }}
-        run: |
-          WHEEL_PATH=$(ls dist/*.whl | head -n 1)
-          WHEEL_NAME=$(basename "$WHEEL_PATH")
-          
-          if [ -z "$WHEEL_PATH" ]; then
-            echo "No wheel file found in dist/ directory."
-            exit 1
-          fi
-
-          echo "Uploading $WHEEL_NAME to release..."
-
-          curl -s -X POST \
-            -H "Authorization: token $GITHUB_TOKEN" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @"$WHEEL_PATH" \
-            "${UPLOAD_URL}?name=${WHEEL_NAME}"
-
-          echo "Wheel uploaded successfully."
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./dist/smolagents-1.5.0.dev0-py3-none-any.whl
+          asset_name: smolagents-1.5.0.dev0-py3-none-any.whl
+          asset_content_type: application/octet-stream
