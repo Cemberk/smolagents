@@ -50,7 +50,7 @@ jobs:
       - name: Create Release
         id: create_release
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.CRED_TOKEN }}
         run: |
           TAG_NAME="${{ github.event.inputs.tag }}"
           RELEASE_NAME="${{ github.event.inputs.tag }}"
@@ -87,7 +87,7 @@ jobs:
       # 6. Upload the wheel to the release
       - name: Upload Wheel
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.CRED_TOKEN }}
           UPLOAD_URL: ${{ steps.create_release.outputs.UPLOAD_URL }}
         run: |
           WHEEL_PATH=$(ls dist/*.whl | head -n 1)
